@@ -8,18 +8,14 @@ module Sequel::Plugins
       model.instance_eval do
         @cache_store = store
         @cache_store_type = Hashr.new({
-          :set_with_ttl => store.respond_to?(:set) ? store.method(:set).arity != 2 : false,
-          :delete_method => (
-            (store.respond_to?(:del) && :del) ||
-            (store.respond_to?(:delete) && :delete) ||
-            (raise NoMethodError, "#{store.class} is not implemented delete method")
-          )
+          :set_with_ttl => false,
+          :delete_method => :del
         })
         @cache_options = Hashr.new(options, {
           :ttl => 3600,
           :ignore_exception => false,
           :pack_lib => MessagePack,
-          :query_cache => store.respond_to?(:keys)
+          :query_cache => false
         })
       end
     end
