@@ -15,7 +15,7 @@ module Sequel::Plugins
           :ttl => 3600,
           :ignore_exception => false,
           :pack_lib => MessagePack,
-          :query_cache => false
+          :query_cache => true
         })
       end
     end
@@ -52,11 +52,39 @@ module Sequel::Plugins
         end
       end
 
+      def cache_set_hash(hash_name, key, obj, ttl = nil)
+        return obj if obj.nil?
+
+        ttl = ttl || cache_options.ttl
+        if cache_options.pack_lib?
+          obj = obj.map{|o| o.id } if obj.kind_of?(Array)
+          obj = cache_options.pack_lib.pack(obj)
+        end
+
+        args = [hash_name, key, obj]
+        cache_store.hset(*args)
+        cache_store.expire(key, ttl)
+      end
+
       def cache_get(key)
         if cache_options.ignore_exceptions?
           obj = cache_store.get(key) rescue nil
         else
           obj = cache_store.get(key)
+        end
+
+        if obj && cache_options.pack_lib?
+          obj = restore_cache(cache_options.pack_lib.unpack(obj))
+        end
+
+        obj
+      end
+
+      def cache_get_hash(hash_name, key)
+        if cache_options.ignore_exceptions?
+          obj = cache_store.hget(hash_name, key) rescue nil
+        else
+          obj = cache_store.hget(hash_name, key)
         end
 
         if obj && cache_options.pack_lib?
@@ -92,6 +120,14 @@ module Sequel::Plugins
         if (val = cache_get(key)).nil?
           val = yield
           cache_set(key, val, ttl)
+        end
+        val
+      end
+
+      def cache_set_get_hash(hash_name, key, ttl = nil)
+        if (val = cache_get_hash(hash_name, key)).nil?
+          val = yield
+          cache_set_hash(hash_name, key, val, ttl)
         end
         val
       end
@@ -182,7 +218,7 @@ module Sequel::Plugins
 
       def delete_cache
         model.cache_del(cache_key)
-        model.clear_query_cache
+        model.cache_del("#{self.clas.name}::Query")
       end
 
       def restore_cache
@@ -198,7 +234,7 @@ module Sequel::Plugins
     module DatasetMethods
       def all(*args)
         if model.cache_options.query_cache? && @row_proc.kind_of?(Class) && @row_proc.included_modules.include?(Sequel::Model::InstanceMethods)
-          @row_proc.cache_set_get(query_to_cache_key) { super(*args) }
+          @row_proc.cache_set_get_hash(model.name + "::Query", select_sql.gsub(/ /, '_')) { super(*args) }
         else
           super(*args)
         end
@@ -206,7 +242,7 @@ module Sequel::Plugins
 
       def first(*args)
         if model.cache_options.query_cache? && @row_proc.kind_of?(Class) && @row_proc.included_modules.include?(Sequel::Model::InstanceMethods)
-          @row_proc.cache_set_get(query_to_cache_key) { super(*args) }
+          @row_proc.cache_set_get_hash(model.name + "::Query", select_sql.gsub(/ /, '_')) { super(*args) }
         else
           super(*args)
         end
