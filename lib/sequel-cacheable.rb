@@ -134,6 +134,9 @@ module Sequel::Plugins
 
       def restore_cache(object)
         return object if object.nil?
+        if object.kind_of?(Array) && object.empty?
+          return object
+        end
 
         return cache_mget(*object.map{|id| "#{model}::#{id}" }) if object.kind_of?(Array)
 
