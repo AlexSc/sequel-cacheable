@@ -15,7 +15,7 @@ module Sequel::Plugins
           :ttl => 3600,
           :ignore_exception => false,
           :pack_lib => MessagePack,
-          :query_cache => true
+          :query_cache => false
         })
       end
     end
